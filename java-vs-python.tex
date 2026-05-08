@@ -342,85 +342,346 @@ break; continue
 \cheatsection{Collections \& data structures}
 %===============================================================================
 
-\begin{construct}{Lists / arrays}
+\cheatsub{Quick reference}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily\small}l >{\small}l X@{}}
+\toprule
+\rowcolor{accentDark}
+\refhead{\normalfont Java} & \refhead{Behavior} & \refhead{Python} \\
+\midrule
+ArrayList<T>       & dynamic array, O(1) get & \code{list} \\
+LinkedList<T>      & doubly-linked, O(1) ends & \code{collections.deque} \\
+int[] / Object[]   & fixed-size primitive array & \code{array.array("i", ...)} (typed) \\
+HashSet<T>         & unordered set, O(1) ops & \code{set} \\
+LinkedHashSet<T>   & insertion-ordered set & \code{dict.fromkeys(xs)} (3.7+ keeps order) \\
+TreeSet<T>         & sorted set & \code{sortedcontainers.SortedSet} (PyPI) \\
+EnumSet            & bit-set over enum & \code{set} of \code{Enum} members \\
+HashMap<K,V>       & unordered map & \code{dict} (insertion-ordered since 3.7!) \\
+LinkedHashMap<K,V> & insertion-ordered map & \code{dict} (or \code{collections.OrderedDict} for \code{move\_to\_end}) \\
+TreeMap<K,V>       & sorted map & \code{sortedcontainers.SortedDict} (PyPI) \\
+IdentityHashMap    & identity-keyed map & \code{\{id(k): v\}} or \code{weakref.WeakKeyDictionary} \\
+EnumMap            & map keyed by enum & plain \code{dict} keyed on \code{Enum} \\
+WeakHashMap        & weakly-referenced keys & \code{weakref.WeakKeyDictionary} \\
+ArrayDeque (queue) & FIFO queue, ring buffer & \code{collections.deque} \\
+ArrayDeque (stack) & LIFO stack & \code{list} via \code{append/pop} \\
+ArrayDeque         & double-ended queue & \code{collections.deque} \\
+PriorityQueue<T>   & binary heap (min-heap) & \code{heapq} on a list \\
+Stack<T>           & legacy LIFO (synchronized) & \code{list} via \code{append/pop} \\
+ConcurrentHashMap  & thread-safe map & \code{dict} + \code{threading.Lock} (or shared via \code{multiprocessing.Manager}) \\
+BlockingQueue      & thread-safe FIFO + blocking & \code{queue.Queue} \\
+LinkedBlockingDeque & blocking deque & \code{queue.Queue} (no native deque variant) \\
+DelayQueue         & expiry-ordered queue & \code{sched} module / hand-roll on \code{heapq} \\
+List.copyOf, Map.of & shallow-immutable views & \code{tuple}, \code{frozenset}, \code{MappingProxyType} \\
+\bottomrule
+\end{tabularx}
+
+\bigskip
+
+\cheatsub{Lists}
+
+\begin{construct}{ArrayList / LinkedList / array}
 \noindent
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=java, title=Java]
-int[] arr = {1, 2, 3};
-List<Integer> xs = new ArrayList<>(List.of(1, 2, 3));
-xs.add(4); xs.get(0); xs.remove(0); xs.size();
-List<Integer> immut = List.of(1, 2, 3);  // immutable
+List<Integer> a = new ArrayList<>();         // O(1) get
+a.add(1); a.get(0); a.remove(0); a.size();
+
+List<Integer> ll = new LinkedList<>();       // O(1) ends
+ll.addFirst(0); ll.addLast(2);
+
+int[] arr = new int[10];                     // fixed
+List<Integer> immut = List.of(1, 2, 3);
 \end{lstlisting}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=python, title=Python]
-xs = [1, 2, 3]                     # list (dynamic array)
-xs.append(4); xs[0]; del xs[0]; len(xs)
-xs[1:3]; xs[::-1]                  # slicing
-t = (1, 2, 3)                      # tuple (immutable)
-import array; a = array.array("i", [1,2,3])  # typed
+xs = [1, 2, 3]                # dynamic array
+xs.append(4); xs[0]; xs.pop(0); len(xs)
+xs[1:3]; xs[::-1]             # slice / reverse view-copy
+
+from collections import deque
+dq = deque([1,2,3])           # O(1) at both ends
+dq.appendleft(0); dq.append(4)
+
+import array
+a = array.array("i", [1,2,3]) # typed C-contiguous
+t = (1, 2, 3)                 # immutable tuple
 \end{lstlisting}
 \end{minipage}
 \end{construct}
 
-\begin{construct}{Sets}
+\cheatsub{Sets}
+
+\begin{construct}{HashSet / LinkedHashSet / TreeSet}
 \noindent
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=java, title=Java]
-Set<String> s = new HashSet<>(List.of("a", "b"));
-s.add("c"); s.contains("a"); s.remove("b");
-Set<String> immut = Set.of("a", "b");
+Set<String> hs = new HashSet<>();             // unordered
+Set<String> ls = new LinkedHashSet<>();       // ins-order
+Set<String> ts = new TreeSet<>();             // sorted
+ts.first(); ts.headSet("m"); ts.subSet("a","z");
+
+EnumSet<Day> weekend = EnumSet.of(SAT, SUN);
 \end{lstlisting}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=python, title=Python]
-s = {"a", "b"}                     # set literal
-s.add("c"); "a" in s; s.discard("b")
-s | t; s & t; s - t                # union/inter/diff
-fs = frozenset({"a", "b"})         # immutable
+s = {"a", "b"}; s.add("c"); s.discard("a")
+s | t; s & t; s - t; s ^ t        # ops
+fs = frozenset(s)                  # immutable
+
+# Insertion order: dict keys preserve, set does NOT.
+ordered = list(dict.fromkeys(["b","a","b","c"]))
+
+# Sorted set: 3rd-party
+from sortedcontainers import SortedSet
+ts = SortedSet(["c","a","b"]);  ts[0]; ts.irange("a","m")
 \end{lstlisting}
 \end{minipage}
 \end{construct}
 
-\begin{construct}{Maps / dicts}
+\cheatsub{Maps}
+
+\begin{construct}{HashMap / LinkedHashMap / TreeMap}
 \noindent
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=java, title=Java]
-Map<String,Integer> m = new HashMap<>();
-m.put("a", 1); m.get("a"); m.containsKey("a");
-m.getOrDefault("b", 0);
-m.computeIfAbsent("c", k -> 42);
-Map<String,Integer> immut = Map.of("a", 1, "b", 2);
+Map<String,Integer> hm = new HashMap<>();        // unord
+Map<String,Integer> lm = new LinkedHashMap<>();  // ins-ord
+Map<String,Integer> tm = new TreeMap<>();        // sorted
+
+hm.put("a", 1); hm.getOrDefault("b", 0);
+hm.computeIfAbsent("c", k -> 42);
+hm.merge("a", 1, Integer::sum);                  // tally
+
+tm.firstKey(); tm.headMap("m"); tm.floorKey("g");
 \end{lstlisting}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=python, title=Python]
-m = {"a": 1}                       # dict literal
-m["a"] = 1; m["a"]; "a" in m
-m.get("b", 0)                      # getOrDefault
-m.setdefault("c", 42)              # computeIfAbsent
+# dict preserves INSERTION ORDER (3.7+). So plain dict
+# already covers HashMap AND LinkedHashMap.
+d = {"a": 1}
+d.get("b", 0)                              # getOrDefault
+d.setdefault("c", 42)                      # computeIfAbsent
+
+# computeIfAbsent for collection-valued maps:
+from collections import defaultdict
+groups = defaultdict(list); groups["k"].append("v")
+
+# Tally / merge:
+from collections import Counter
+c = Counter("aabbbccd"); c.most_common(2)
+
+# Sorted map: 3rd-party
+from sortedcontainers import SortedDict
+sm = SortedDict({"b":2,"a":1}); sm.irange("a","m")
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Identity / weak / read-only / enum keys}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Map<Key,V> id = new IdentityHashMap<>();        // == not equals
+Map<Key,V> wk = new WeakHashMap<>();            // GC-able keys
+Map<K,V>   ro = Collections.unmodifiableMap(m); // view
+Map<Day,V> em = new EnumMap<>(Day.class);
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=python, title=Python]
+import weakref
+wk = weakref.WeakKeyDictionary()           # WeakHashMap
+wv = weakref.WeakValueDictionary()         # values can vanish
+
 from types import MappingProxyType
-immut = MappingProxyType({"a": 1}) # read-only view
+ro = MappingProxyType({"a": 1})            # read-only view
+
+# IdentityHashMap idiom:
+id_map = {}
+id_map[id(obj)] = value
+
+# EnumMap analog: just dict[Enum, V]
+from enum import Enum
+class Day(Enum): MON=1; TUE=2
+schedule: dict[Day, str] = {}
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Queue, deque, stack, priority queue}
+
+\begin{construct}{Queue (FIFO) \& Deque}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Deque<Integer> q = new ArrayDeque<>();   // recommended FIFO
+q.offer(1); q.offer(2);
+int head = q.poll();                     // null if empty
+int peek = q.peek();
+
+// Double-ended:
+q.offerFirst(0); q.offerLast(3);
+q.pollFirst(); q.pollLast();
+
+// Capacity-bounded blocking:
+BlockingQueue<Integer> bq = new ArrayBlockingQueue<>(8);
+bq.put(42); int v = bq.take();           // blocks
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=python, title=Python]
+from collections import deque
+dq = deque(maxlen=8)            # optional cap (drops old)
+dq.append(1); dq.appendleft(0)  # O(1) both ends
+dq.popleft()                    # FIFO take
+dq.pop()                        # LIFO take
+dq[0]                           # peek
+
+# Thread-safe blocking queue:
+import queue
+bq = queue.Queue(maxsize=8)
+bq.put(42)              # blocks if full
+v = bq.get()            # blocks if empty
+# Variants: queue.LifoQueue, queue.PriorityQueue
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Stack (LIFO)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+// Avoid legacy java.util.Stack (synchronized + Vector).
+Deque<Integer> st = new ArrayDeque<>();
+st.push(1); st.push(2);
+int top = st.peek();
+int v   = st.pop();
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=python, title=Python]
+# Idiomatic: just a list with append/pop.
+st = []
+st.append(1); st.append(2)
+top = st[-1]
+v   = st.pop()        # O(1) at the end
+# (Use deque if you need both ends; list is faster for LIFO.)
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{PriorityQueue (heap)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+PriorityQueue<Integer> pq = new PriorityQueue<>();   // min
+PriorityQueue<Job> jobs =
+    new PriorityQueue<>(Comparator.comparingInt(Job::priority));
+pq.offer(3); pq.offer(1); pq.offer(2);
+int min = pq.poll();           // 1
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=python, title=Python]
+import heapq
+h = []
+heapq.heappush(h, 3); heapq.heappush(h, 1); heapq.heappush(h, 2)
+mn = heapq.heappop(h)          # 1 (min-heap)
+
+# Custom priority: push (priority, item) tuples
+heapq.heappush(h, (job.priority, job))
+
+# Max-heap: push negated keys, or use a wrapper.
+# Thread-safe: queue.PriorityQueue.
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Concurrent \& specialized}
+
+\begin{construct}{Concurrent maps and queues}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+ConcurrentHashMap<String,Long> chm = new ConcurrentHashMap<>();
+chm.merge("k", 1L, Long::sum);             // atomic tally
+chm.computeIfAbsent("k", k -> heavy());     // single-flight
+
+BlockingQueue<Task> q = new LinkedBlockingQueue<>();
+q.put(t); Task next = q.take();
+
+CopyOnWriteArrayList<Listener> listeners
+    = new CopyOnWriteArrayList<>();         // read-mostly
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=python, title=Python]
+# No native lock-free map. Patterns:
+import threading
+lock = threading.Lock()
+counts = {}
+with lock:
+    counts["k"] = counts.get("k", 0) + 1
+
+# Thread-safe queue:
+import queue
+q = queue.Queue()
+q.put(t); next_ = q.get()
+
+# Cross-process state:
+import multiprocessing
+m = multiprocessing.Manager().dict()
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Specialized: Counter, ChainMap, NamedTuple}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+// Tally: Map<K,Long> + merge, or Stream.collect(groupingBy)
+Map<String,Long> tally = words.stream()
+    .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
+
+// Layered config: walk a list of Maps yourself.
+// Named tuple: record (Java 16+)
+record Point(int x, int y) {}
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=python, title=Python]
+from collections import Counter, ChainMap, namedtuple, OrderedDict
+c = Counter(words)               # multiset / tally
+c["x"] += 1; c.most_common(3)
+
+cfg = ChainMap(env, file_cfg, defaults)   # layered lookup
+
+P = namedtuple("Point", "x y")            # immutable record
+# Modern: dataclasses.dataclass(frozen=True) is preferred.
+
+od = OrderedDict()                # adds .move_to_end / popitem(last)
+od["a"] = 1; od.move_to_end("a")
 \end{lstlisting}
 \end{minipage}
 \end{construct}
 
 \begin{construct}{Mutability defaults}
 \noindent
-\begin{minipage}[t]{0.485\linewidth}
-\begin{lstlisting}[style=java, title=Java]
-// Mutable by default. List.of / Set.of / Map.of / .copyOf
-// give true immutability. Collections.unmodifiableList
-// wraps a view (underlying may still mutate).
-\end{lstlisting}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.485\linewidth}
-\begin{lstlisting}[style=python, title=Python]
-# list / dict / set are mutable; tuple, frozenset are not.
-# str, bytes are immutable. There is no "deep readonly"
-# wrapper baked into core; use frozen dataclasses or
-# MappingProxyType for shallow readonly views.
-\end{lstlisting}
+\begin{minipage}[t]{\linewidth}
+\small
+\textbf{Java}: \code{ArrayList}, \code{HashMap}, \code{HashSet} mutable.
+\code{List.of} / \code{Set.of} / \code{Map.of} return true-immutable instances.
+\code{Collections.unmodifiableX} wraps a \emph{view} --- the underlying can still
+be mutated by holders of the original.\par
+\textbf{Python}: \code{list}, \code{dict}, \code{set} mutable.
+\code{tuple}, \code{frozenset}, \code{bytes}, \code{str} immutable.
+\code{MappingProxyType} wraps a dict for a shallow-readonly view.
+For "deeply readonly" data: \code{@dataclass(frozen=True)},
+\code{NamedTuple}, or \code{tuple}-of-tuples.
 \end{minipage}
 \end{construct}
 

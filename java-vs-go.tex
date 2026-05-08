@@ -323,53 +323,353 @@ for _, x := range xs { ... }      // discard index
 \cheatsection{Collections \& data structures}
 %===============================================================================
 
-\begin{construct}{Arrays vs slices vs maps}
+Go's stdlib is intentionally minimal here: \code{slice} and \code{map} cover
+80\% of needs; the rest leans on \code{container/*} packages, channels, or
+3rd-party libraries (e.g. \code{github.com/emirpasic/gods}, \code{google/btree},
+\code{elliotchance/orderedmap}).
+
+\cheatsub{Quick reference}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily\small}l >{\small}l X@{}}
+\toprule
+\rowcolor{accentDark}
+\refhead{\normalfont Java} & \refhead{Behavior} & \refhead{Go} \\
+\midrule
+ArrayList<T>        & dynamic array & \code{[]T} (slice) \\
+LinkedList<T>       & doubly-linked & \code{container/list} \\
+int[] / Object[]    & fixed-size array & \code{[N]T} (array, value type) \\
+HashSet<T>          & unordered set & \code{map[T]struct\{\}} \\
+LinkedHashSet<T>    & insertion-ordered set & slice + \code{map[T]int} idiom (or \code{orderedmap}) \\
+TreeSet<T>          & sorted set & \code{google/btree} or \code{emirpasic/gods/sets/treeset} \\
+EnumSet             & bit-set over enum & \code{map[Day]struct\{\}} or hand-rolled bitmask \\
+HashMap<K,V>        & unordered map & \code{map[K]V} (RANGE ORDER IS RANDOMIZED) \\
+LinkedHashMap<K,V>  & insertion-ordered & \code{elliotchance/orderedmap} (PyPI-style) \\
+TreeMap<K,V>        & sorted map & \code{google/btree} or \code{emirpasic/gods/.../treemap} \\
+IdentityHashMap     & identity-keyed & \code{map[unsafe.Pointer]V} (rare; usually a code-smell in Go) \\
+EnumMap             & enum-keyed map & plain \code{map[Day]V} \\
+WeakHashMap         & weak keys & no native; not idiomatic in Go \\
+ArrayDeque (queue)  & FIFO & \code{container/list} or channel \\
+ArrayDeque (stack)  & LIFO & slice with \code{append} / pop-by-reslice \\
+ArrayDeque          & double-ended & \code{container/list} \\
+PriorityQueue<T>    & min-heap & \code{container/heap} (impl interface on a slice) \\
+ConcurrentHashMap   & thread-safe map & \code{sync.Map} (specific access patterns), or \code{map} + \code{sync.RWMutex} \\
+BlockingQueue       & blocking FIFO & \code{chan T} (buffered or unbuffered) \\
+DelayQueue          & expiry-ordered & \code{container/heap} + \code{time.Timer} \\
+List.copyOf, Map.of & immutable views & no native; convention + lint, or freeze-on-clone \\
+Stream / Collectors & lazy ops & \code{slices}, \code{maps} pkgs (1.21+); \code{iter} (1.23+) \\
+\bottomrule
+\end{tabularx}
+
+\bigskip
+
+\cheatsub{Slices, arrays, maps (the natives)}
+
+\begin{construct}{Slice (dynamic) vs array (fixed)}
 \noindent
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=java, title=Java]
-int[] a = {1, 2, 3};                 // fixed
+int[] arr = new int[10];                  // fixed
 List<Integer> xs = new ArrayList<>(List.of(1,2,3));
-xs.add(4); xs.get(0); xs.size();
-Set<String> set = new HashSet<>(List.of("a","b"));
-Map<String,Integer> m = new HashMap<>();
-m.put("a", 1);
+xs.add(4); xs.get(0); xs.remove(0); xs.size();
 \end{lstlisting}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=go, title=Go]
-a := [3]int{1, 2, 3}                 // ARRAY (fixed size)
-xs := []int{1, 2, 3}                 // SLICE (dynamic view)
-xs = append(xs, 4); xs[0]; len(xs); cap(xs)
-xs[1:3]                              // sub-slice (no copy!)
+var arr [10]int           // fixed, value type, copied on assign
+xs := []int{1, 2, 3}      // slice = (ptr, len, cap)
+xs = append(xs, 4)        // may grow; reassign result!
+xs[0]; len(xs); cap(xs)
+xs = append(xs[:i], xs[i+1:]...)  // delete index i
 
-// No built-in set; use map[T]struct{}
-set := map[string]struct{}{"a": {}, "b": {}}
-_, ok := set["a"]                    // membership
-
-m := map[string]int{"a": 1}
-m["a"] = 1; v, ok := m["a"]; delete(m, "a")
+// 1.21+ slices package:
+import "slices"
+slices.Contains(xs, 2); slices.Sort(xs); slices.Reverse(xs)
 \end{lstlisting}
 \end{minipage}
 \end{construct}
 
-\begin{construct}{Slice gotcha}
+\begin{construct}{Slice gotcha (shared backing array)}
 \noindent
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=java, title=Java]
-// subList returns a view; modifying it mutates the parent.
-// Same general "view vs copy" hazard, less surprising
-// because typical code uses fresh ArrayList copies.
+// subList returns a VIEW; mutating it mutates parent.
+// Convention is to copy when handing out lists.
 \end{lstlisting}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=go, title=Go]
-// Slices share backing array. Sub-slicing is a VIEW.
 a := []int{1,2,3,4,5}
-b := a[1:3]                  // {2,3}, shares storage
-b[0] = 99                    // mutates a[1] too!
-// To fully detach: copy
-c := make([]int, len(b)); copy(c, b)
+b := a[1:3]               // {2,3}, SHARES storage
+b[0] = 99                 // mutates a[1] too!
+// Detach:
+c := slices.Clone(b)
+// or: c := make([]int, len(b)); copy(c, b)
 \end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Map (HashMap analog) --- iteration is randomized}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Map<String,Integer> m = new HashMap<>();
+m.put("a", 1); int v = m.getOrDefault("b", 0);
+m.computeIfAbsent("c", k -> 42);
+for (var e : m.entrySet()) { ... }
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+m := map[string]int{"a": 1}
+m["a"] = 1
+v, ok := m["b"]                      // ok false if missing
+delete(m, "a")
+
+// Go RANDOMIZES range order on purpose. To iterate sorted:
+keys := slices.Sorted(maps.Keys(m))   // 1.23+
+for _, k := range keys { fmt.Println(k, m[k]) }
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Sets (no native type --- use map keys)}
+
+\begin{construct}{HashSet / LinkedHashSet / TreeSet}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Set<String> hs = new HashSet<>();
+Set<String> ls = new LinkedHashSet<>();
+Set<String> ts = new TreeSet<>();
+ts.first(); ts.subSet("a","z");
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+// Go convention: set == map with empty-struct values (0 bytes).
+hs := map[string]struct{}{}
+hs["a"] = struct{}{}
+_, ok := hs["a"]
+delete(hs, "a")
+
+// Insertion-ordered: parallel slice tracking insertion order,
+// or 3rd-party (emirpasic/gods/sets/linkedhashset).
+
+// Sorted set: emirpasic/gods/sets/treeset, or google/btree.
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Maps with order or sort guarantees}
+
+\begin{construct}{LinkedHashMap (insertion order)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Map<String,Integer> m = new LinkedHashMap<>();
+m.put("b", 2); m.put("a", 1);
+// Iteration: b, a (insertion order)
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+// Idiom 1: parallel slice of keys + map for lookup
+type Ordered[K comparable, V any] struct {
+    keys []K; m map[K]V
+}
+func (o *Ordered[K,V]) Set(k K, v V) {
+    if _, ok := o.m[k]; !ok { o.keys = append(o.keys, k) }
+    o.m[k] = v
+}
+
+// Idiom 2: 3rd-party
+// import "github.com/elliotchance/orderedmap/v2"
+// om := orderedmap.NewOrderedMap[string,int]()
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{TreeMap (sorted map)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+TreeMap<String,Integer> tm = new TreeMap<>();
+tm.put("b", 2); tm.put("a", 1);
+tm.firstKey(); tm.headMap("m"); tm.floorKey("g");
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+// No stdlib equivalent. Pick a B-tree library:
+// import "github.com/google/btree"
+// type kv struct{ K string; V int }
+// tr := btree.NewG[kv](32, func(a,b kv) bool { return a.K<b.K })
+// tr.ReplaceOrInsert(kv{"b",2})
+
+// For "sorted iteration of an existing map", just sort keys:
+keys := slices.Sorted(maps.Keys(m))   // 1.23+
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Queue, deque, stack, priority queue}
+
+\begin{construct}{Queue (FIFO) and Deque}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Deque<Integer> q = new ArrayDeque<>();   // FIFO via offer/poll
+q.offer(1); int head = q.poll();
+// Double-ended:
+q.offerFirst(0); q.offerLast(2);
+q.pollFirst(); q.pollLast();
+
+// Blocking:
+BlockingQueue<Integer> bq = new ArrayBlockingQueue<>(8);
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+import "container/list"
+l := list.New()
+l.PushBack(1); l.PushFront(0)
+front := l.Front().Value
+l.Remove(l.Front())                  // O(1) at both ends
+
+// Channel-based queue (THE go-idiomatic FIFO):
+ch := make(chan int, 8)              // buffered, blocking
+ch <- 1                              // blocks if full
+v := <-ch                            // blocks if empty
+close(ch); for v := range ch { ... } // drain
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Stack (LIFO)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+// Avoid legacy java.util.Stack.
+Deque<Integer> st = new ArrayDeque<>();
+st.push(1); st.push(2);
+int top = st.peek(); int v = st.pop();
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+// Slice as stack (idiomatic):
+st := []int{}
+st = append(st, 1)              // push
+st = append(st, 2)
+top := st[len(st)-1]            // peek
+v, st := st[len(st)-1], st[:len(st)-1]   // pop
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{PriorityQueue (heap)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+PriorityQueue<Integer> pq = new PriorityQueue<>();
+pq.offer(3); pq.offer(1); pq.offer(2);
+int min = pq.poll();           // 1
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+import "container/heap"
+
+// Implement heap.Interface on a slice type:
+type IntHeap []int
+func (h IntHeap) Len() int           { return len(h) }
+func (h IntHeap) Less(i,j int) bool  { return h[i]<h[j] }
+func (h IntHeap) Swap(i,j int)       { h[i],h[j] = h[j],h[i] }
+func (h *IntHeap) Push(x any)        { *h = append(*h, x.(int)) }
+func (h *IntHeap) Pop() any          {
+    old := *h; n := len(old); x := old[n-1]; *h = old[:n-1]
+    return x
+}
+h := &IntHeap{3,1,2}; heap.Init(h)
+heap.Push(h, 0); min := heap.Pop(h).(int)
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Concurrent}
+
+\begin{construct}{Concurrent map and queue}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+ConcurrentHashMap<String,Long> chm = new ConcurrentHashMap<>();
+chm.merge("k", 1L, Long::sum);
+chm.computeIfAbsent("k", k -> heavy());
+
+BlockingQueue<Task> q = new LinkedBlockingQueue<>();
+q.put(t); Task next = q.take();
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+// sync.Map: optimized for read-heavy + key-stable workloads.
+// For "general HashMap", prefer map + sync.RWMutex.
+var m sync.Map
+m.Store("k", 1); v, ok := m.Load("k")
+m.LoadOrStore("k", 1)              // computeIfAbsent-ish
+
+// Atomic tally idiom:
+import "sync/atomic"
+var hits atomic.Int64
+hits.Add(1)
+
+// Blocking queue == buffered channel:
+q := make(chan Task, 64)
+q <- t; next := <-q
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Specialized}
+
+\begin{construct}{Counter / multiset, ring buffer, named tuple}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Map<String,Long> tally = words.stream()
+    .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
+record Point(int x, int y) {}
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=go, title=Go]
+// Counter: just a map.
+counts := map[string]int{}
+for _, w := range words { counts[w]++ }
+
+// Ring buffer:
+import "container/ring"
+r := ring.New(5)
+for i := 0; i < r.Len(); i++ { r.Value = i; r = r.Next() }
+
+// Named tuple == struct (no anonymous tuples):
+type Point struct { X, Y int }
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Mutability / read-only}
+\noindent
+\begin{minipage}[t]{\linewidth}
+\small
+\textbf{Java}: \code{ArrayList}, \code{HashMap}, \code{HashSet} mutable.
+\code{List.of/Set.of/Map.of} return immutables. \code{Collections.unmodifiableX}
+wraps a view.\par
+\textbf{Go}: \code{slice}, \code{map}, struct fields all mutable. \emph{There is
+no language-level immutability.} Convention: hand out copies (\code{slices.Clone},
+\code{maps.Clone}); accept read-only intent via interface methods that don't
+mutate, or pass a copy. Some libraries freeze-on-clone but it's not idiomatic.
 \end{minipage}
 \end{construct}
 

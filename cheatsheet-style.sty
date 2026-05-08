@@ -16,6 +16,10 @@
 \RequirePackage{hyperref}
 \RequirePackage{microtype}
 \RequirePackage[strings]{underscore} % allow _ in text mode
+\RequirePackage{tabularx}
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{colortbl}
 
 %-------------------------------------------------------------------------------
 % FONTS (graceful fallback if Tex Gyre Heros / Latin Modern Mono missing)
@@ -119,6 +123,10 @@
 
 % inline code
 \newcommand{\code}[1]{\texttt{\small #1}}
+
+% Reference-table helpers
+\definecolor{tableRow}{HTML}{F4F8FB}
+\newcommand{\refhead}[1]{{\color{white}\bfseries #1}}
 
 %-------------------------------------------------------------------------------
 % TITLES — custom sectioning (avoids titlesec dependency)

@@ -262,31 +262,260 @@ for await (const chunk of stream) {     // AsyncIterable
 \cheatsection{Collections \& data structures}
 %===============================================================================
 
-\begin{construct}{Arrays, sets, maps}
+JavaScript's built-ins are: \code{Array}, \code{Map}, \code{Set},
+\code{WeakMap}, \code{WeakSet}, plus typed-array buffers. Both \code{Map} and
+\code{Set} preserve insertion order --- so they double as
+\code{LinkedHashMap}/\code{LinkedHashSet} out of the box. For sorted maps,
+priority queues, and deques you'll reach for npm libraries (\code{mnemonist},
+\code{js-sdsl}, or \code{sorted-btree}).
+
+\cheatsub{Quick reference}
+
+\noindent
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily\small}l >{\small}l X@{}}
+\toprule
+\rowcolor{accentDark}
+\refhead{\normalfont Java} & \refhead{Behavior} & \refhead{TypeScript} \\
+\midrule
+ArrayList<T>        & dynamic array & \code{T[]} (\code{Array<T>}) \\
+LinkedList<T>       & doubly-linked & \code{mnemonist/linked-list}; or just use Array \\
+int[] / Object[]    & fixed-size array & \code{Int32Array(N)} typed array; \code{Array(N)} (sparse) \\
+HashSet<T>          & unordered set & \code{Set<T>} (note: insertion-ORDERED) \\
+LinkedHashSet<T>    & insertion-ordered set & \code{Set<T>} (it already is) \\
+TreeSet<T>          & sorted set & \code{js-sdsl} \code{OrderedSet}; \code{sorted-btree} \\
+EnumSet             & bit-set over enum & \code{Set<MyEnum>} \\
+HashMap<K,V>        & unordered map & \code{Map<K,V>} (insertion-ORDERED); object-as-dict for string keys \\
+LinkedHashMap<K,V>  & insertion-ordered & \code{Map<K,V>} (it already is) \\
+TreeMap<K,V>        & sorted map & \code{js-sdsl} \code{OrderedMap}; \code{sorted-btree} \\
+IdentityHashMap     & identity-keyed & \code{Map<K,V>}: object keys ARE compared by reference \\
+EnumMap             & enum-keyed map & \code{Map} or \code{Record<MyEnum, V>} \\
+WeakHashMap         & weak keys & \code{WeakMap<K,V>} (keys must be objects) \\
+ArrayDeque          & double-ended queue & \code{mnemonist/deque}; Array (shift is O(n)) \\
+ArrayDeque (queue)  & FIFO & \code{mnemonist/deque} or \code{Array.shift} (slow) \\
+ArrayDeque (stack)  & LIFO & \code{Array.push/pop} \\
+PriorityQueue<T>    & min-heap & \code{mnemonist/heap}, \code{js-sdsl} \code{PriorityQueue} \\
+ConcurrentHashMap   & thread-safe map & N/A --- single-threaded event loop; cross-worker via \code{postMessage} \\
+BlockingQueue       & blocking FIFO & async generator + \code{await}; or \code{node:stream} \\
+Counter             & multiset / tally & \code{Map<K,number>}; \code{Object.groupBy} (ES2024) \\
+List.copyOf, Map.of & immutable view & \code{readonly T[]}, \code{ReadonlyMap<K,V>} (compile-time only); \code{Object.freeze} for runtime \\
+\bottomrule
+\end{tabularx}
+
+\bigskip
+
+\cheatsub{Arrays, sets, maps (the natives)}
+
+\begin{construct}{Array (ArrayList analog)}
 \noindent
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=java, title=Java]
 List<Integer> xs = new ArrayList<>(List.of(1,2,3));
 xs.add(4); xs.get(0); xs.size(); xs.remove(0);
-
-Set<String> set = new HashSet<>(List.of("a","b"));
-Map<String,Integer> m = new HashMap<>();
-m.put("a", 1); m.getOrDefault("b", 0);
+xs.subList(1, 3); Collections.reverse(xs);
 \end{lstlisting}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.485\linewidth}
 \begin{lstlisting}[style=ts, title=TypeScript]
 const xs: number[] = [1, 2, 3];
-xs.push(4); xs[0]; xs.length; xs.shift();
-xs.slice(1, 3); [...xs].reverse();
+xs.push(4); xs[0]; xs.length; xs.splice(0, 1);
+xs.slice(1, 3);              // copy [1,3)
+xs.toReversed();             // ES2023 (or [...xs].reverse())
 
-const set = new Set<string>(["a", "b"]);
-set.add("c"); set.has("a"); set.delete("b");
+// Higher-order:
+xs.filter(x => x > 0).map(x => x*2);
+xs.reduce((a, x) => a + x, 0);
+xs.find(x => x === 2); xs.includes(2); xs.at(-1);
 
+// Typed arrays (ArrayBuffer-backed, no boxing):
+const buf = new Int32Array(1024);
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Map (LinkedHashMap by default)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Map<String,Integer> m = new HashMap<>();
+m.put("a", 1); m.getOrDefault("b", 0);
+m.computeIfAbsent("c", k -> heavy());
+m.merge("a", 1, Integer::sum);
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=ts, title=TypeScript]
 const m = new Map<string, number>();
-m.set("a", 1); m.get("a") ?? 0;     // getOrDefault
-// Plain object as record: { [k: string]: number }
+m.set("a", 1); m.get("a") ?? 0;
+m.has("a"); m.delete("a"); m.size;
+
+// computeIfAbsent idiom:
+let v = m.get("c") ?? (() => { const x = heavy(); m.set("c", x); return x; })();
+
+// merge / tally:
+m.set("a", (m.get("a") ?? 0) + 1);
+
+// Iteration order = insertion order (always).
+for (const [k, v] of m) { ... }
+
+// Map vs object: Map keys can be ANY type. Object keys are
+// always strings (or symbols). Map has .size; objects don't.
 const r: Record<string, number> = { a: 1 };
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Set (LinkedHashSet by default)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Set<String> hs = new HashSet<>();
+Set<String> ls = new LinkedHashSet<>();
+Set<String> ts = new TreeSet<>();
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=ts, title=TypeScript]
+const s = new Set<string>(["a", "b"]);
+s.add("c"); s.has("a"); s.delete("b"); s.size;
+
+// Set ops (ES2025):
+s.union(t); s.intersection(t); s.difference(t);
+s.symmetricDifference(t); s.isSubsetOf(t);
+
+// Pre-ES2025 polyfill:
+const u = new Set([...s, ...t]);                  // union
+const i = new Set([...s].filter(x => t.has(x)));  // inter
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Weak collections}
+
+\begin{construct}{WeakMap / WeakSet}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Map<Key,V> wk = new WeakHashMap<>();
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=ts, title=TypeScript]
+const wm = new WeakMap<object, V>();      // keys MUST be objects
+wm.set(keyObj, value);
+wm.get(keyObj); wm.has(keyObj); wm.delete(keyObj);
+// No iteration, no .size --- entries vanish silently when
+// the key is GC'd. Useful for attaching metadata to objects
+// without preventing collection.
+
+const ws = new WeakSet<object>();
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Sorted / priority structures (use libraries)}
+
+\begin{construct}{TreeMap / TreeSet (sorted)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+TreeMap<String,Integer> tm = new TreeMap<>();
+tm.firstKey(); tm.headMap("m"); tm.floorKey("g");
+
+TreeSet<Integer> ts = new TreeSet<>();
+ts.first(); ts.subSet(1, 10);
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=ts, title=TypeScript]
+// No stdlib. Pick a library:
+import { OrderedMap, OrderedSet } from "js-sdsl";
+const tm = new OrderedMap<string, number>();
+tm.setElement("b", 2); tm.setElement("a", 1);
+tm.front()!.first;       // smallest key
+
+// Or sorted-btree:
+import BTree from "sorted-btree";
+const t = new BTree<string, number>();
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{PriorityQueue (heap)}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+PriorityQueue<Job> pq = new PriorityQueue<>(
+    Comparator.comparingInt(Job::priority));
+pq.offer(j); Job next = pq.poll();
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=ts, title=TypeScript]
+import Heap from "mnemonist/heap";
+const pq = new Heap<Job>((a, b) => a.priority - b.priority);
+pq.push(j); const next = pq.pop();
+
+// Or js-sdsl PriorityQueue, or hand-roll an array-based
+// binary heap (~30 lines) if you want zero deps.
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Deque, queue, stack}
+
+\begin{construct}{Stack and queue patterns}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Deque<Integer> st = new ArrayDeque<>();    // stack
+st.push(1); st.peek(); st.pop();
+
+Deque<Integer> q = new ArrayDeque<>();     // FIFO
+q.offer(1); q.poll();
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=ts, title=TypeScript]
+// Stack: just an array.
+const st: number[] = [];
+st.push(1); const top = st.at(-1); const v = st.pop();
+
+// Queue: Array.shift() works but is O(n) per call.
+// For hot paths use mnemonist/deque (O(1) both ends):
+import Deque from "mnemonist/deque";
+const q = new Deque<number>();
+q.push(1); q.shift();         // O(1)
+\end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\cheatsub{Specialized}
+
+\begin{construct}{Counter / groupBy / immutable views}
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=java, title=Java]
+Map<String,Long> tally = words.stream()
+    .collect(Collectors.groupingBy(w -> w, Collectors.counting()));
+List<Integer> immut = List.copyOf(xs);
+\end{lstlisting}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.485\linewidth}
+\begin{lstlisting}[style=ts, title=TypeScript]
+// Tally:
+const counts = new Map<string, number>();
+for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1);
+
+// ES2024 group-by (returns plain object / Map):
+const byLen = Object.groupBy(words, w => w.length);
+const byLenMap = Map.groupBy(words, w => w.length);
+
+// Compile-time read-only (erased at runtime):
+const xs: readonly number[] = [1,2,3];
+const m: ReadonlyMap<string, number> = new Map();
+
+// Runtime freeze (shallow):
+const frozen = Object.freeze({ a: 1 });
 \end{lstlisting}
 \end{minipage}
 \end{construct}
@@ -307,7 +536,17 @@ const [a, b] = pair;                     // tuple destructure
 const { x, y } = point;                  // object destructure
 const { x: px, y: py } = point;          // rename
 const [head, ...rest] = xs;              // rest pattern
+const ro = [1, 2] as const;              // readonly tuple
 \end{lstlisting}
+\end{minipage}
+\end{construct}
+
+\begin{construct}{Mutability defaults}
+\noindent
+\begin{minipage}[t]{\linewidth}
+\small
+\textbf{Java}: \code{ArrayList}, \code{HashMap}, \code{HashSet} mutable; \code{List.of/Set.of/Map.of} are runtime-immutable.\par
+\textbf{TypeScript}: All native collections are mutable at runtime. \code{readonly} / \code{Readonly<T>} / \code{ReadonlyMap} / \code{ReadonlySet} are \emph{compile-time only} --- they erase at runtime. For real runtime immutability use \code{Object.freeze} (shallow), \code{structuredClone} for deep copies, or libraries like \code{immer} / \code{immutable.js}.
 \end{minipage}
 \end{construct}
 
