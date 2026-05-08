@@ -1,0 +1,192 @@
+% cheatsheet-style.sty — shared style for Java vs {Python, Go, TypeScript} cheatsheets
+% Engine: xelatex
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cheatsheet-style}[2026/05/07 Lang Cheatsheet Style]
+
+%-------------------------------------------------------------------------------
+% PACKAGES
+%-------------------------------------------------------------------------------
+\RequirePackage[letterpaper, margin=1.4cm, top=1.2cm, bottom=1.4cm, footskip=0.6cm]{geometry}
+\RequirePackage{fontspec}
+\RequirePackage{xcolor}
+\RequirePackage{listings}
+\RequirePackage{fancyhdr}
+\RequirePackage{enumitem}
+\RequirePackage{parskip}
+\RequirePackage{hyperref}
+\RequirePackage{microtype}
+\RequirePackage[strings]{underscore} % allow _ in text mode
+
+%-------------------------------------------------------------------------------
+% FONTS (graceful fallback if Tex Gyre Heros / Latin Modern Mono missing)
+%-------------------------------------------------------------------------------
+\IfFontExistsTF{TeX Gyre Heros}{%
+  \setmainfont{TeX Gyre Heros}
+}{}
+\IfFontExistsTF{Latin Modern Mono}{%
+  \setmonofont{Latin Modern Mono}[Scale=0.92]
+}{}
+
+%-------------------------------------------------------------------------------
+% COLORS (matches CV awesome-skyblue tone)
+%-------------------------------------------------------------------------------
+\definecolor{accentBlue}{HTML}{0395DE}
+\definecolor{accentDark}{HTML}{0E5A82}
+\definecolor{codeFrame}{HTML}{D0D0D0}
+\definecolor{codeBg}{HTML}{FAFAFA}
+\definecolor{kwBlue}{HTML}{1F4FB8}
+\definecolor{kwGreen}{HTML}{1A7F37}
+\definecolor{strRed}{HTML}{B31D28}
+\definecolor{commentGray}{HTML}{6E7781}
+\definecolor{typeOrange}{HTML}{B45309}
+
+%-------------------------------------------------------------------------------
+% LISTINGS — shared base + per-language styles
+%-------------------------------------------------------------------------------
+\lstdefinelanguage{TypeScript}{
+  keywords={break, case, catch, class, const, continue, debugger, default,
+    delete, do, else, enum, export, extends, false, finally, for, from, function,
+    if, implements, import, in, instanceof, interface, let, module, new, null,
+    of, package, private, protected, public, readonly, return, static, super,
+    switch, this, throw, true, try, type, typeof, undefined, var, void, while,
+    with, yield, async, await, as, abstract, declare, namespace, satisfies, is,
+    keyof, infer},
+  keywordstyle=\bfseries\color{kwBlue},
+  ndkeywords={number, string, boolean, any, unknown, never, object, bigint, symbol, Promise, Array, Map, Set, Record, Partial, Readonly, Pick, Omit},
+  ndkeywordstyle=\color{typeOrange},
+  identifierstyle=\color{black},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{commentGray}\itshape,
+  stringstyle=\color{strRed},
+  morestring=[b]',
+  morestring=[b]",
+  morestring=[b]`,
+}
+
+\lstdefinelanguage{Go}{
+  keywords={break, case, chan, const, continue, default, defer, else,
+    fallthrough, for, func, go, goto, if, import, interface, map, package,
+    range, return, select, struct, switch, type, var, true, false, nil, iota},
+  keywordstyle=\bfseries\color{kwBlue},
+  ndkeywords={int, int8, int16, int32, int64, uint, uint8, uint16, uint32,
+    uint64, uintptr, float32, float64, complex64, complex128, bool, string,
+    byte, rune, error, any, comparable, make, new, len, cap, append, copy,
+    delete, panic, recover, print, println, close},
+  ndkeywordstyle=\color{typeOrange},
+  identifierstyle=\color{black},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{commentGray}\itshape,
+  stringstyle=\color{strRed},
+  morestring=[b]",
+  morestring=[b]`,
+}
+
+\lstdefinestyle{base}{
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\bfseries\color{kwBlue},
+  commentstyle=\color{commentGray}\itshape,
+  stringstyle=\color{strRed},
+  showstringspaces=false,
+  numbers=none,
+  frame=single,
+  framerule=0.3pt,
+  rulecolor=\color{codeFrame},
+  backgroundcolor=\color{codeBg},
+  breaklines=true,
+  breakatwhitespace=false,
+  breakindent=4pt,
+  postbreak=\mbox{\textcolor{gray}{$\hookrightarrow$}\space},
+  columns=fullflexible,
+  keepspaces=true,
+  upquote=true,
+  xleftmargin=4pt,
+  xrightmargin=2pt,
+  aboveskip=2pt,
+  belowskip=2pt,
+  abovecaptionskip=2pt,
+  belowcaptionskip=1pt,
+  captionpos=t,
+}
+
+\lstdefinestyle{java}{style=base, language=Java}
+\lstdefinestyle{python}{style=base, language=Python}
+\lstdefinestyle{go}{style=base, language=Go}
+\lstdefinestyle{ts}{style=base, language=TypeScript}
+
+% inline code
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+%-------------------------------------------------------------------------------
+% TITLES — custom sectioning (avoids titlesec dependency)
+%-------------------------------------------------------------------------------
+\newcounter{cheatsec}
+\newcommand{\cheatsection}[1]{%
+  \par\bigskip
+  \refstepcounter{cheatsec}%
+  \noindent\colorbox{accentBlue}{\parbox{\dimexpr\linewidth-2\fboxsep}{%
+    \strut\Large\bfseries\color{white}\,\arabic{cheatsec}.\ #1\,}}\par
+  \nobreak\smallskip%
+}
+
+\newcommand{\cheatsub}[1]{%
+  \par\smallskip
+  \noindent{\large\bfseries\color{accentDark}#1}\par
+  \nobreak\smallskip%
+}
+
+%-------------------------------------------------------------------------------
+% CONSTRUCT BLOCK — title bar + side-by-side minipages with code
+% Usage:
+%   \begin{construct}{Construct title}
+%     \javaside{...lstlisting body...}
+%     \rhsside{...lstlisting body...}    % style chosen by document preamble
+%   \end{construct}
+%
+% In practice we use \begin{lstlisting}[style=java]...\end{lstlisting} inline
+% inside two minipages — see cheatsheet .tex files.
+%-------------------------------------------------------------------------------
+\newcommand{\constructTitle}[1]{%
+  \par\smallskip
+  \noindent\colorbox{accentDark}{\parbox{\dimexpr\linewidth-2\fboxsep}{%
+    \strut\color{white}\bfseries\,#1\,}}%
+  \par\nobreak\smallskip%
+}
+
+% Compact two-column wrapper. Children: two minipages of 0.485\linewidth.
+\newenvironment{construct}[1]
+  {\constructTitle{#1}\noindent\ignorespaces}
+  {\par\medskip}
+
+%-------------------------------------------------------------------------------
+% HEADER / FOOTER
+%-------------------------------------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[L]{\footnotesize\color{commentGray}\@title}
+\fancyfoot[R]{\footnotesize\color{commentGray}\thepage}
+
+%-------------------------------------------------------------------------------
+% DOC HEADER MACRO
+%   \cheatsheetTitle{Java vs Python}{Mathieu Néron}{2026-05-07}
+%-------------------------------------------------------------------------------
+\newcommand{\cheatsheetTitle}[3]{%
+  \begin{center}
+    {\Huge\bfseries\color{accentDark}#1}\\[2pt]
+    {\small\color{commentGray}A Java developer's quick reference \textbar\ #2 \textbar\ #3}
+  \end{center}
+  \vspace{2pt}
+}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=accentDark,
+  urlcolor=accentBlue,
+  pdfborder={0 0 0},
+}
+
+\endinput
